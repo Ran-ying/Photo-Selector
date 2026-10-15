@@ -195,6 +195,20 @@ class PhotoSelectorIntegration(unittest.TestCase):
         status, _, _, _ = replacement.api("photo", query=f"&id={aid}&size=preview")
         self.assertEqual(status, 200)
 
+        # Simulate an upgrade from the older model schema without session_version.
+        # All data stays in this disposable test directory; original bytes remain intact.
+        with sqlite3.connect(self.data / "selector.sqlite") as conn:
+            conn.execute("ALTER TABLE models DROP COLUMN session_version")
+        _, state, _, _ = admin.api("bootstrap")
+        self.assertTrue(state["admin"])
+        with sqlite3.connect(self.data / "selector.sqlite") as conn:
+            cols = [column[1] for column in conn.execute("PRAGMA table_info(models)")]
+            self.assertIn("session_version", cols)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0], 2)
+        status, _, _, body = admin.api("photo", query=f"&id={aid}&size=original")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, picture)
+
 
 if __name__ == "__main__":
     unittest.main()
