@@ -4,6 +4,7 @@
 
 # Runtime data must never be committed.
 private_model_photo_selector/
+.runtime-data/
 data/
 uploads/
 originals/

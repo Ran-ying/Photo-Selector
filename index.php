@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS models (
     character_name TEXT NOT NULL DEFAULT '',
     access_code TEXT NOT NULL UNIQUE,
     allow_download INTEGER NOT NULL DEFAULT 1,
+    session_version INTEGER NOT NULL DEFAULT 0,
     review_status TEXT NOT NULL DEFAULT 'draft',
     submitted_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -98,6 +99,11 @@ SQL);
     $photoColumns = array_column($db->query('PRAGMA table_info(photos)')->fetchAll(), 'name');
     if (!in_array('rotation', $photoColumns, true)) {
         $db->exec('ALTER TABLE photos ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0');
+    }
+    $modelColumns = array_column($db->query('PRAGMA table_info(models)')->fetchAll(), 'name');
+    if (!in_array('session_version', $modelColumns, true)) {
+        // Existing model sessions are invalidated after this compatible migration.
+        $db->exec('ALTER TABLE models ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
     }
 } catch (Throwable $e) {
     http_response_code(500);
@@ -160,10 +166,25 @@ function requireAdmin(): void
     if (empty($_SESSION['admin'])) jsonResponse(['ok' => false, 'error' => '请先登录管理员。'], 401);
 }
 
-function requireModel(): int
+function activeModelId(PDO $db): int
 {
     $id = (int)($_SESSION['model_id'] ?? 0);
-    if ($id < 1) jsonResponse(['ok' => false, 'error' => '请先输入访问码。'], 401);
+    if ($id < 1) return 0;
+    $stmt = $db->prepare('SELECT session_version FROM models WHERE id = ?');
+    $stmt->execute([$id]);
+    $version = $stmt->fetchColumn();
+    if ($version === false || !isset($_SESSION['model_auth_version'])
+        || (int)$_SESSION['model_auth_version'] !== (int)$version) {
+        unset($_SESSION['model_id'], $_SESSION['model_auth_version']);
+        return 0;
+    }
+    return $id;
+}
+
+function requireModel(PDO $db): int
+{
+    $id = activeModelId($db);
+    if ($id < 1) jsonResponse(['ok' => false, 'error' => '访问已失效，请重新输入访问码。'], 401);
     return $id;
 }
 
@@ -435,7 +456,7 @@ function servePhoto(PDO $db, string $originalDir, string $previewDir, string $th
     }
 
     $isAdmin = !empty($_SESSION['admin']);
-    $sessionModel = (int)($_SESSION['model_id'] ?? 0);
+    $sessionModel = activeModelId($db);
     if (!$isAdmin && $sessionModel !== (int)$photo['model_id']) {
         http_response_code(403);
         exit;
@@ -504,8 +525,11 @@ function servePhoto(PDO $db, string $originalDir, string $previewDir, string $th
     header('Content-Length: ' . filesize($path));
     header('Cache-Control: private, max-age=3600');
     if ($download) {
-        $safe = preg_replace('/[^A-Za-z0-9._-]+/', '_', (string)$photo['original_name']) ?: 'photo.jpg';
-        header("Content-Disposition: attachment; filename*=UTF-8''" . rawurlencode($safe));
+        // RFC 5987 UTF-8 filename with an ASCII fallback; strip unsafe header controls.
+        $originalName = basename(str_replace('\\', '/', (string)$photo['original_name']));
+        $safe = preg_replace('/[\x00-\x1F\x7F]/u', '_', $originalName) ?: 'photo.jpg';
+        $fallback = preg_replace('/[^A-Za-z0-9._-]/', '_', $safe) ?: 'photo.jpg';
+        header('Content-Disposition: attachment; filename="' . $fallback . '"; filename*=UTF-8\'\'' . rawurlencode($safe));
     } else {
         header('Content-Disposition: inline');
     }
@@ -526,7 +550,9 @@ if ($api !== '') {
                 'csrf' => csrfToken(),
             ];
             if (!empty($_SESSION['admin'])) $payload['events'] = adminData($db);
-            if (!empty($_SESSION['model_id'])) $payload['model_data'] = modelData($db, (int)$_SESSION['model_id']);
+            $modelId = activeModelId($db);
+            $payload['model'] = $modelId > 0;
+            if ($modelId > 0) $payload['model_data'] = modelData($db, $modelId);
             jsonResponse($payload);
         }
 
@@ -558,16 +584,17 @@ if ($api !== '') {
             clearAttempts($db);
             session_regenerate_id(true);
             $_SESSION['admin'] = true;
-            unset($_SESSION['model_id']);
+            unset($_SESSION['model_id'], $_SESSION['model_auth_version']);
             jsonResponse(['ok' => true]);
         }
 
         if ($api === 'model_login') {
             enforceAttemptLimit($db);
             $code = strtoupper(preg_replace('/\s+/', '', (string)($body['code'] ?? '')));
-            $stmt = $db->prepare('SELECT id FROM models WHERE access_code = ?');
+            $stmt = $db->prepare('SELECT id, session_version FROM models WHERE access_code = ?');
             $stmt->execute([$code]);
-            $id = (int)($stmt->fetchColumn() ?: 0);
+            $model = $stmt->fetch();
+            $id = $model ? (int)$model['id'] : 0;
             if ($id < 1) {
                 recordFailedAttempt($db);
                 jsonResponse(['ok' => false, 'error' => '访问码不正确。'], 401);
@@ -575,6 +602,7 @@ if ($api !== '') {
             clearAttempts($db);
             session_regenerate_id(true);
             $_SESSION['model_id'] = $id;
+            $_SESSION['model_auth_version'] = (int)$model['session_version'];
             unset($_SESSION['admin']);
             jsonResponse(['ok' => true]);
         }
@@ -674,7 +702,7 @@ if ($api !== '') {
             requireAdmin();
             $modelId = (int)($body['model_id'] ?? 0);
             $code = generateCode($db);
-            $stmt = $db->prepare('UPDATE models SET access_code = ? WHERE id = ?');
+            $stmt = $db->prepare('UPDATE models SET access_code = ?, session_version = session_version + 1 WHERE id = ?');
             $stmt->execute([$code, $modelId]);
             if ($stmt->rowCount() < 1) jsonResponse(['ok' => false, 'error' => '模特不存在。'], 404);
             jsonResponse(['ok' => true, 'code' => $code]);
@@ -776,7 +804,7 @@ if ($api !== '') {
         }
 
         if ($api === 'review') {
-            $modelId = requireModel();
+            $modelId = requireModel($db);
             $photoId = (int)($body['photo_id'] ?? 0);
             $rating = max(0, min(5, (int)($body['rating'] ?? 0)));
             $note = textValue($body['note'] ?? '', 1000);
@@ -788,7 +816,7 @@ if ($api !== '') {
         }
 
         if ($api === 'submit_review') {
-            $modelId = requireModel();
+            $modelId = requireModel($db);
             $db->prepare("UPDATE models SET review_status = 'submitted', submitted_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$modelId]);
             jsonResponse(['ok' => true]);
         }
