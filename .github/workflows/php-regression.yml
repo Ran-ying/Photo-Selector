@@ -25,6 +25,6 @@ jobs:
           php -m | grep -qi 'gd'
           php -m | grep -qi 'fileinfo'
           php -l index.php
-          git diff --check
+          git diff --check "$(git rev-list --max-parents=0 HEAD)" HEAD
       - name: Isolated API regressions
         run: python3 -m unittest discover -s tests -v
