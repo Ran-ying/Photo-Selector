@@ -29,7 +29,7 @@
 
 - PHP 8.0 或更高版本
 - PDO SQLite 扩展
-- GD 扩展
+- GD 与 fileinfo 扩展
 - 可选：ImageMagick 的 `/usr/bin/convert`，存在时优先用于生成预览图和缩略图
 - Web 服务器对数据目录有读写权限
 
@@ -60,6 +60,10 @@ GitHub Actions 会在提交和 PR 时运行语法检查和隔离 API 集成测�
 ├── index.php                  # 完整可部署应用：后端、API、HTML、CSS、JavaScript
 ├── AGENTS.md                  # 给 AI/开发者的完整接手说明和硬性约束
 ├── README.md                  # 项目入口文档
+├── tests/
+│   └── test_integration.py       # 独立 API 集成测试
+├── .github/workflows/
+│   └── php-regression.yml       # GitHub CI
 ├── docs/
 │   ├── ARCHITECTURE.md        # 架构、数据模型、接口和图像流程
 │   ├── DEPLOYMENT.md          # 部署、升级、备份与回滚
