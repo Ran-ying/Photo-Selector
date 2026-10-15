@@ -1,0 +1,24 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime data must never be committed.
+private_model_photo_selector/
+data/
+uploads/
+originals/
+previews/
+thumbs/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Deployment secrets and local overrides.
+.env
+.env.*
+!.env.example
+*.log
+*.bak
+*.tmp
+
