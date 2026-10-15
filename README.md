@@ -11,7 +11,7 @@
 - 首次访问设置管理员密码，之后使用 Session 登录。
 - 按“活动名称 + 拍摄日期”管理拍摄活动。
 - 在活动下创建模特，记录 CN、角色名并自动生成 6 位数字字母访问码。
-- 修改或删除模特、重新生成访问码、控制模特是否可以下载原图。
+- 修改或删除模特、重新生成访问码并撤销已登录的旧模特 Session、控制模特是否可以下载原图。
 - JPEG/PNG/WebP 多图上传；每张独立显示进度，默认 3 路并发，失败后可单独重传。
 - 按上传顺序、星级从高到低/从低到高、未评级优先排序。
 - 查看模特的星级和备注，并对显示方向错误的照片手动左转或右转。
@@ -36,11 +36,22 @@
 开发环境可直接运行：
 
 ```bash
-export PHOTO_SELECTOR_DATA_DIR="$PWD/.runtime-data"
+export PHOTO_SELECTOR_DATA_DIR="$(mktemp -d /tmp/photo-selector-dev.XXXXXX)"
 php -S 127.0.0.1:8080 index.php
 ```
 
-然后打开 `http://127.0.0.1:8080`。生产环境必须将 `PHOTO_SELECTOR_DATA_DIR` 指向 Web 根目录之外；不要把数据库和照片放入 Git 仓库。
+然后打开 `http://127.0.0.1:8080`。该命令使用仓库以外的临时数据目录；测试结束后自行清理。生产环境必须将 `PHOTO_SELECTOR_DATA_DIR` 指向 Web 根目录之外；不要把数据库和照片放入 Git 仓库。
+
+## 自动化回归
+
+本地安装 PHP、PDO SQLite、GD、fileinfo 后运行：
+
+```bash
+php -l index.php
+python3 -m unittest discover -s tests -v
+```
+
+GitHub Actions 会在提交和 PR 时运行语法检查和隔离 API 集成测试。测试数据始终与生产数据隔离。
 
 ## 仓库结构
 
@@ -53,7 +64,8 @@ php -S 127.0.0.1:8080 index.php
 │   ├── ARCHITECTURE.md        # 架构、数据模型、接口和图像流程
 │   ├── DEPLOYMENT.md          # 部署、升级、备份与回滚
 │   ├── DEVELOPMENT.md         # 开发规范和人工验收清单
-│   └── SECURITY.md            # 权限、隐私和安全边界
+│   ├── SECURITY.md            # 权限、隐私和安全边界
+│   └── PROJECT_STATUS.md      # 交接状态、测试和下一步
 └── deploy/
     └── nginx.example.conf     # Nginx + PHP-FPM 配置示例
 ```
@@ -65,6 +77,7 @@ php -S 127.0.0.1:8080 index.php
 - 本地开发与验收：[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
 - 部署和数据备份：[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - 安全与隐私：[`docs/SECURITY.md`](docs/SECURITY.md)
+- 当前进度与下一步：[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)
 
 ## 当前生产环境
 
