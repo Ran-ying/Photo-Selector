@@ -29,7 +29,7 @@ Photo Selector 是一个无框架、单入口 PHP 应用：
 1. 环境变量 `PHOTO_SELECTOR_DATA_DIR`
 2. `dirname(__DIR__) . '/private_model_photo_selector'`
 
-启动时会创建数据目录及 `originals/`、`previews/`、`thumbs/`，打开 SQLite，启用外键和 WAL，并在不存在时创建表。
+启动时会创建数据目录及 `originals/`、`previews/`、`thumbs/`，打开 SQLite，启用外键和 WAL，并在不存在时创建表。旧数据库若无 `models.session_version`，在启动时添加整数列，默认值为 0；旧模特 Session 缺少版本值，因此需要重新登录。
 
 ## 数据模型
 
@@ -59,6 +59,7 @@ Photo Selector 是一个无框架、单入口 PHP 应用：
 | `character_name` | 角色名 |
 | `access_code` | 唯一 6 位访问码，登录时转大写 |
 | `allow_download` | 是否允许模特下载原图 |
+| `session_version` | 模特 Session 的版本；重新生成访问码时递增并撤销旧 Session |
 | `review_status` | 历史完成状态字段；当前 UI 不使用 |
 | `submitted_at` | 历史提交时间字段；当前 UI 不使用 |
 | `created_at` | 创建时间 |
@@ -88,7 +89,7 @@ Photo Selector 是一个无框架、单入口 PHP 应用：
 Session 中存在两种互斥身份：管理员和模特。
 
 - 管理员可以管理所有活动、模特和照片。
-- 模特只能读取自己 `model_id` 下的照片，只能修改自己的评分和备注。
+- 模特只能读取自己 `model_id` 下的照片，只能修改自己的评分和备注。每次受保护访问核对 Session 的 `model_auth_version` 与数据库的 `session_version`，失效或已删除时拒绝访问。
 - 原图下载还要同时满足 `allow_download = 1`。
 - 图片不是公开静态文件；`?api=photo&id=...` 会在输出前校验 Session 和资源归属。
 
@@ -123,7 +124,7 @@ Session 中存在两种互斥身份：管理员和模特。
 
 - `create_event` / `delete_event`
 - `create_model` / `update_model` / `delete_model`
-- `regenerate_code`
+- `regenerate_code`（同时递增 `models.session_version`，立即使旧模特 Session 失效）
 - `toggle_download`
 - `rotate_photo`
 - `upload`
