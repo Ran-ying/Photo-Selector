@@ -5,11 +5,11 @@
 要求 PHP 8.0+，并启用 PDO SQLite、GD 和 fileinfo。
 
 ```bash
-export PHOTO_SELECTOR_DATA_DIR="$PWD/.runtime-data"
+export PHOTO_SELECTOR_DATA_DIR="$(mktemp -d /tmp/photo-selector-dev.XXXXXX)"
 php -S 127.0.0.1:8080 index.php
 ```
 
-`.runtime-data` 仅用于本机测试，不要提交。若需要反复测试破坏性操作，请每次使用新建的临时数据目录。
+请始终使用 Web 根目录之外的临时数据目录，不要提交测试数据。若需要反复测试破坏性操作，请每次使用新建的临时数据目录，并在测试结束后清理。
 
 ## 修改原则
 
@@ -30,7 +30,10 @@ php -S 127.0.0.1:8080 index.php
 ```bash
 php -l index.php
 git diff --check
+python3 -m unittest discover -s tests -v
 ```
+
+集成测试使用 PHP 内置服务器与仓库外独立临时数据库，不会连接生产站点；CI 用 Ubuntu 24.04 安装 PHP CLI、SQLite 与 GD 并执行同样的检查。
 
 提交前还应搜索是否误加入数据或凭据：
 
@@ -38,6 +41,10 @@ git diff --check
 git status --short
 git ls-files | grep -E '\.(sqlite|db|log|bak)$|(^|/)(originals|previews|thumbs)/'
 ```
+
+## 自动化覆盖范围
+
+`tests/test_integration.py` 覆盖首次设置、活动与模特创建、中文文件名上传下载、原图字节一致性、跨模特读写隔离、评分备注持久化、下载权限以及重新生成访问码后的旧 Session 撤销。它不能替代实际浏览器交互、手机适配、EXIF 方向与高像素资源耗尽的人工验收。
 
 ## 人工验收矩阵
 
