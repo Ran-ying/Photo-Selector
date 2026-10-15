@@ -51,6 +51,7 @@
 - `docs/DEPLOYMENT.md`：部署、升级、备份、回滚。
 - `docs/DEVELOPMENT.md`：修改方式和人工测试矩阵。
 - `docs/SECURITY.md`：认证、授权、数据隐私与风险。
+- `docs/PROJECT_STATUS.md`：当前完成范围、测试覆盖、生产部署状态与下一阶段任务。
 
 运行数据：
 
@@ -74,7 +75,7 @@ SQLite 主要表：
 
 - `settings`：管理员密码哈希等键值设置。
 - `events`：活动名称、拍摄日期和创建时间。
-- `models`：所属活动、CN、角色、访问码、下载权限、历史完成状态字段。
+- `models`：所属活动、CN、角色、访问码、下载权限、会话版本 `session_version`、历史完成状态字段。
 - `photos`：所属模特、存储名、原文件名、MIME、大小、尺寸、手动旋转角度、评级、备注和时间。
 - `access_attempts`：按 IP 哈希记录访问码失败次数，用于限流。
 
@@ -87,6 +88,8 @@ API 使用同一入口的 `?api=<name>`：
 - POST 管理：`create_event`、`delete_event`、`create_model`、`update_model`、`delete_model`、`regenerate_code`、`toggle_download`、`rotate_photo`、`upload`
 - POST 模特：`review`
 - 遗留：`submit_review`（UI 不使用，不得据此恢复完成按钮）
+
+重新生成访问码必须递增 `models.session_version`，使先前用旧访问码登录的模特 Session 在下一次鉴权时失效。历史模特 Session（缺少 `model_auth_version`）在升级后也会失效，需要重新输入访问码。
 
 所有 POST 请求必须带 CSRF token。`photo` 接口必须继续按当前 Session 身份校验照片归属，不能因使用静态路径而绕过授权。
 
@@ -118,7 +121,7 @@ API 使用同一入口的 `?api=<name>`：
 1. 先查看 `git status`，不要覆盖用户未提交的修改。
 2. 阅读相关代码和文档，确认是否会影响数据库兼容性、已上传原图或访问控制。
 3. 做最小范围修改；若新增配置，更新 README、部署文档和本文件。
-4. 至少执行 `php -l index.php`。如果当前环境没有 PHP，必须明确记录未执行，不能假称通过。
+4. 至少执行 `php -l index.php` 与 `python3 -m unittest discover -s tests -v`（要求 PHP 的 PDO SQLite、GD、fileinfo）。如果缺少依赖，必须明确记录未执行，不能假称通过；以 CI 结果交叉验证。
 5. 按 `docs/DEVELOPMENT.md` 完成人工验收，尤其是手机大图、EXIF 竖图、评级自动保存和权限隔离。
 6. 涉及删除逻辑时，只能在专用测试数据上验证；不得在生产站点测试删除。
 7. 部署前同时备份 `selector.sqlite` 和 `originals/`，并确认备份可恢复。
@@ -153,7 +156,7 @@ API 使用同一入口的 `?api=<name>`：
 
 ## 11. 已知问题与后续优先级
 
-- 尚无自动化测试。优先补充 API 集成测试和关键浏览器回归测试。
+- 已有基于隔离临时数据目录的 API 集成测试与 GitHub Actions；仍需扩展异常上传、迁移和浏览器端响应式回归测试。
 - 删除为永久删除，没有回收站。若实现回收站，需要设计数据库迁移、文件恢复和定期清理策略。
 - `submit_review` 是未使用的遗留接口/字段，可在确认无旧客户端依赖后做数据库兼容式清理。
 - 目前没有单张照片删除功能。
