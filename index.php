@@ -527,7 +527,7 @@ function servePhoto(PDO $db, string $originalDir, string $previewDir, string $th
     if ($download) {
         // RFC 5987 UTF-8 filename with an ASCII fallback; strip unsafe header controls.
         $originalName = basename(str_replace('\\', '/', (string)$photo['original_name']));
-        $safe = preg_replace('/[\\x00-\\x1F\\x7F]/u', '_', $originalName) ?: 'photo.jpg';
+        $safe = preg_replace('/[\x00-\x1F\x7F]/u', '_', $originalName) ?: 'photo.jpg';
         $fallback = preg_replace('/[^A-Za-z0-9._-]/', '_', $safe) ?: 'photo.jpg';
         header('Content-Disposition: attachment; filename="' . $fallback . '"; filename*=UTF-8\'\'' . rawurlencode($safe));
     } else {
